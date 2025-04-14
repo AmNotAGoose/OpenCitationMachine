@@ -1,67 +1,43 @@
-# import cohere co = cohere.Client('RRNSG7Umz9eHzpvppJJu3TZW9wVuW2AljKOsJQ9M')
-import requests
-from bs4 import BeautifulSoup
-import json
-import helpers
+from newspaper import Article
+from newspaper import Config
 
 
-def get_html(url):
-    response = requests.get(url)
-    return response.content
+user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'
+config = Config()
+config.browser_user_agent = user_agent
 
 
-def get_author_messy(meta_tags):
-    author = None
-    for tag in meta_tags:
-        if 'name' in tag.attrs and tag.attrs['name'].lower() == 'author':
-            author = tag.attrs['content']
-            break
-
-    return author
+def parse_article(url):
+    article = Article(url=url, config=config)
+    article.download()
+    article.parse()
+    return article
 
 
-def get_publication_date_messy(meta_tags):
-    pub_date = None
-    for tag in meta_tags:
-        if 'name' in tag.attrs and tag.attrs['name'].lower() in ['pubdate', 'date', 'dcterms.created']:
-            pub_date = tag.attrs['content']
-            break
-
-    return pub_date
+""" 
+[Author]. [Title of Source]. [Title of Container], [Other Contributors], [Version], [Number], [Publisher], [Publication Date], [Location]. [Access Date].
+"""
 
 
-def get_metadata_schema_org(soup):
-    structured_data = soup.find('script', type='application/ld+json')
-    author = None
-    publication_date = None
-    title = None
-    website_name = None
-    if structured_data:
-        data = json.loads(structured_data.string)
-        author = data.get('author', {})
-        if author:
-            author = author['name']
-        publication_date = data.get('datePublished')
-        title = data.get('headline')
-        publisher_info = data.get('publisher')
-        if publisher_info:
-            website_name = publisher_info.get('name')
+def format_mla9(url):
+    article = parse_article(url)
 
-    return {'author': author, 'publication_date': publication_date, 'title': title, 'website_name': website_name}
+    def format_author(_authors):
+        if len(_authors) == 1:
+            return f"{author_lastname_firstname(_authors[0], ', ')}. "
+        elif len(_authors) == 2:
+            return f"{author_lastname_firstname(_authors[0], ', ')}, and {_authors[1]}. "
+        elif len(_authors) > 2:
+            return f"{author_lastname_firstname(_authors[0], ', ')}, et al. "
+        else:
+            return ""
 
 
-def get_metadata(url):
-    html_content = get_html(url)
-    soup = BeautifulSoup(html_content, 'html.parser')
-    # meta_tags = soup.find_all('meta')
+    final_authors = format_author(article.authors)
+    final = f"{final_authors}"
+    return final
 
-    data = get_metadata_schema_org(soup)
-    data['url'] = url
 
-    if helpers.is_iso_string(data['publication_date']):
-        data['publication_date'] = helpers.iso_to_dmy(data['publication_date'])
-
-    # author = get_author_messy(meta_tags)
-    # publication_date = get_publication_date_messy(meta_tags)
-
-    return data
+def author_lastname_firstname(author, sep):
+    author_split = author.split()
+    return f"{author_split[-1]}{sep if len(author_split) > 1 else ''}{sep.join(author_split[:-1])}"
